@@ -1,0 +1,10 @@
+# Barangay Relief Pack Optimizer — Python dependencies
+# Python 3.9+ required (uses PEP 585 generic type hints like list[Family]).
+# tkinter is part of the Python standard library and is NOT pip-installable.
+# On Linux you may need to install it via your package manager, e.g.:
+#   sudo apt install python3-tk
+
+# Used by ml_scorer.py for the Decision Tree vulnerability classifier.
+# (Optional — only needed if you keep the ML module.)
+numpy>=1.24,<3.0
+scikit-learn>=1.3,<2.0
