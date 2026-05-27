@@ -26,25 +26,38 @@ def optimize_bag(
     benefits = [it.benefit for it in items]
     n = len(items)
 
-    # Build DP table bottom-up
+    # Build DP table bottom-up.
+    # dp[i][w] = the maximum total benefit achievable using the first i items
+    # within a weight capacity of w (in 0.1 kg units).
+    # Row 0 and column 0 stay zero: no items or no capacity means no benefit.
     dp = [[0] * (W + 1) for _ in range(n + 1)]
     for i in range(1, n + 1):
-        wi, bi = weights[i - 1], benefits[i - 1]
+        wi, bi = weights[i - 1], benefits[i - 1]  # weight and benefit of item i
         for w in range(W + 1):
+            # Default: skip item i, inherit the best from the previous row.
             dp[i][w] = dp[i - 1][w]
+            # If item i fits in capacity w, consider taking it:
+            # remaining capacity (w - wi) lookup + this item's benefit (bi).
             if wi <= w:
                 val = dp[i - 1][w - wi] + bi
+                # Keep whichever choice (skip vs. take) gives the bigger benefit.
                 if val > dp[i][w]:
                     dp[i][w] = val
 
-    # Backtrack to recover selected items
+    # Backtrack from the bottom-right cell to recover WHICH items were chosen.
+    # The DP table tells us the best total benefit, but not the actual items;
+    # we figure that out by walking backwards through the decisions.
     selected, w = [], W
     for i in range(n, 0, -1):
+        # If dp[i][w] differs from dp[i-1][w], item i must have been included
+        # (otherwise the value would have stayed the same as the row above).
         if dp[i][w] != dp[i - 1][w]:
             selected.append(items[i - 1])
-            w -= weights[i - 1]
+            w -= weights[i - 1]  # reduce remaining capacity by that item's weight
 
+    # Convert the scaled-up integer weight back to real kg for display.
     total_weight  = round(sum(it.weight_kg for it in selected), 2)
+    # The optimal benefit is always stored in the bottom-right cell of the table.
     total_benefit = dp[n][W]
     return selected, total_weight, total_benefit
 
