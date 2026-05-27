@@ -13,13 +13,14 @@ it improves the INPUT to the greedy ranker automatically.
 
 Member responsibilities
 -----------------------
-M1  → this file (train, predict)
+M1  → this file (train, predict, feature importance)
+M3  → calls get_validation_report() to show accuracy in the GUI
 """
 
 import os
 import pickle
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from models import Family
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ml_model.pkl")
@@ -107,6 +108,27 @@ def score_families(families: List[Family]) -> List[Family]:
     for fam, lbl in zip(families, labels):
         fam.ml_score = LABEL_SCORE[lbl]
     return families
+
+
+# ── Validation report (for M3 to display in GUI) ─────────────────────────────
+
+def get_validation_report() -> Dict:
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+    model = _load()
+    X, y  = _generate_data()
+    _, X_te, _, y_te = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    y_pred = model.predict(X_te)
+
+    return {
+        "accuracy":            round(accuracy_score(y_te, y_pred), 4),
+        "confusion_matrix":    confusion_matrix(y_te, y_pred, labels=["high","medium","low"]).tolist(),
+        "labels":              ["high", "medium", "low"],
+        "classification_report": classification_report(y_te, y_pred,
+                                    target_names=["high","medium","low"]),
+        "feature_importances": dict(zip(FEATURES, model.feature_importances_.tolist())),
+    }
 
 
 # ── Self-test ─────────────────────────────────────────────────────────────────

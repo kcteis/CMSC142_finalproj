@@ -5,10 +5,11 @@ Screens:
   1. Inventory Setup   — items + bag capacity + bag count
   2. Family Registry   — register families, auto-score
   3. Results           — optimized bag + ranked assignment
+  4. ML Validation     — model accuracy, confusion matrix, feature importance
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, scrolledtext
 import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from models import ReliefItem, Family
 from knapsack import optimize_bag, get_dp_table
 from priority import assign_bags
-from ml_scorer import score_families, train_model, MODEL_PATH
+from ml_scorer import score_families, train_model, get_validation_report, MODEL_PATH
 from utils import (validate_item, validate_capacity, validate_family,
                    check_supply_warnings, export_text, export_csv, build_text_report)
 
@@ -124,7 +125,8 @@ class App(tk.Tk):
         self._nav_btns = {}
         for key, txt in [("inventory","  Inventory Setup"),
                          ("families", "  Family Registry"),
-                         ("results",  "  Results")]:
+                         ("results",  "  Results"),
+                         ("mlval",    "  ML Validation")]:
             b = tk.Button(self.nav, text=txt, font=FN, fg="#C7D2FE", bg=NAV_BG,
                           relief="flat", bd=0, anchor="w", padx=12, pady=10,
                           cursor="hand2", activebackground=NAV_ACC, activeforeground="white",
@@ -156,7 +158,8 @@ class App(tk.Tk):
             f.destroy()
         {"inventory": self._inventory,
          "families":  self._families,
-         "results":   self._results}[name](self.content)
+         "results":   self._results,
+         "mlval":     self._mlval}[name](self.content)
 
     def _reset(self):
         if messagebox.askyesno("New Disaster", "Clear all data and start fresh?"):
@@ -517,6 +520,102 @@ class App(tk.Tk):
         if path:
             export_csv(S.summary, path)
             messagebox.showinfo("Exported", f"Saved to:\n{path}")
+
+    # ── Screen 4 — ML Validation ──────────────────────────────────────────────
+    def _mlval(self, parent):
+        lbl(parent, "ML Model Validation", font=FN_H1).pack(anchor="w", padx=24, pady=(20,2))
+        lbl(parent, "Decision Tree Classifier — trained on synthetic DSWD-aligned family data.",
+            font=FN_SM, fg=MUTED).pack(anchor="w", padx=24)
+
+        btn_row = tk.Frame(parent, bg=BG)
+        btn_row.pack(anchor="w", padx=24, pady=(10,4))
+        btn(btn_row, "Retrain Model", self._retrain, width=13).pack(side="left")
+        self._ml_msg = lbl(btn_row, "", fg=MUTED, font=FN_SM)
+        self._ml_msg.pack(side="left", padx=10)
+
+        self._ml_content = tk.Frame(parent, bg=BG)
+        self._ml_content.pack(fill="both", expand=True, padx=24, pady=4)
+        self._render_mlval()
+
+    def _retrain(self):
+        self._ml_msg.configure(text="Training…", fg=WARNING)
+        self.update()
+        train_model(verbose=False)
+        self._ml_msg.configure(text="Model retrained!", fg=SUCCESS)
+        self._render_mlval()
+
+    def _render_mlval(self):
+        for w in self._ml_content.winfo_children():
+            w.destroy()
+
+        try:
+            vr = get_validation_report()
+        except Exception as e:
+            lbl(self._ml_content, f"Could not load model: {e}", fg=DANGER).pack(pady=20)
+            return
+
+        cols = tk.Frame(self._ml_content, bg=BG)
+        cols.pack(fill="both", expand=True)
+
+        # Left — accuracy + feature importance
+        left = card_frame(cols)
+        left.pack(side="left", fill="y", padx=(0,6), pady=2)
+
+        lbl(left, "Accuracy", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(12,4))
+        lbl(left, f"{vr['accuracy']:.2%}", font=("Helvetica",28,"bold"),
+            fg=SUCCESS if vr['accuracy'] >= 0.85 else WARNING, bg=CARD).pack(anchor="w", padx=16)
+        lbl(left, "on held-out test set (20%)", font=FN_SM, fg=MUTED, bg=CARD).pack(anchor="w", padx=16)
+
+        tk.Frame(left, bg=BORDER, height=1).pack(fill="x", padx=14, pady=10)
+        lbl(left, "Feature importances", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(0,8))
+
+        max_imp = max(vr["feature_importances"].values())
+        for feat, imp in sorted(vr["feature_importances"].items(), key=lambda x: -x[1]):
+            row = tk.Frame(left, bg=CARD)
+            row.pack(fill="x", padx=16, pady=3)
+            lbl(row, f"{feat}:", bg=CARD, font=FN_SM, width=18, anchor="w").pack(side="left")
+            bar_bg = tk.Frame(row, bg="#E8E6E0", width=140, height=14)
+            bar_bg.pack(side="left")
+            bar_bg.pack_propagate(False)
+            bar_w = int(140 * imp / max_imp)
+            tk.Frame(bar_bg, bg=ACCENT, width=bar_w, height=14).place(x=0, y=0)
+            lbl(row, f"{imp:.3f}", bg=CARD, font=FN_SM, fg=MUTED).pack(side="left", padx=6)
+
+        lbl(left, "", bg=CARD).pack(pady=4)
+
+        # Right — confusion matrix + classification report
+        right = card_frame(cols)
+        right.pack(side="left", fill="both", expand=True, pady=2)
+
+        lbl(right, "Confusion Matrix", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(12,4))
+
+        labels  = vr["labels"]
+        cm      = vr["confusion_matrix"]
+        cm_f    = tk.Frame(right, bg=CARD)
+        cm_f.pack(anchor="w", padx=16, pady=4)
+
+        lbl(cm_f, "Predicted →", font=FN_SM, fg=MUTED, bg=CARD).grid(
+            row=0, column=0, padx=4, pady=2)
+        for j, lab in enumerate(labels):
+            lbl(cm_f, lab, font=FN_B, bg=CARD).grid(row=0, column=j+1, padx=8)
+        for i, lab in enumerate(labels):
+            lbl(cm_f, lab, font=FN_B, fg=MUTED, bg=CARD).grid(row=i+1, column=0, padx=6, sticky="e")
+            for j in range(len(labels)):
+                val = cm[i][j]
+                bg  = "#EEF2FF" if i == j else CARD
+                fg  = ACCENT   if i == j else PRIMARY
+                lbl(cm_f, str(val), font=FN_B if i==j else FN_SM,
+                    fg=fg, bg=bg).grid(row=i+1, column=j+1, padx=8, pady=2,
+                                       ipadx=6, ipady=3)
+
+        tk.Frame(right, bg=BORDER, height=1).pack(fill="x", padx=14, pady=8)
+        lbl(right, "Classification Report", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(0,4))
+        st = scrolledtext.ScrolledText(right, height=8, font=("Courier",10),
+                                       bg="#F8F7F4", fg=PRIMARY, relief="flat", bd=0)
+        st.pack(fill="both", expand=True, padx=14, pady=(0,12))
+        st.insert("end", vr["classification_report"])
+        st.configure(state="disabled")
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
