@@ -126,9 +126,6 @@ The GUI has four screens, accessed from the left sidebar.
    assignment table on the right, and summary stats at the top. Includes a
    **View DP Table** button that opens the full DP table used by Module 1,
    and **Export TXT / CSV** buttons for field use.
-4. **ML Validation** — Accuracy on a held-out test set, confusion matrix,
-   feature importances, and a classification report. Useful for justifying
-   the optional ML enhancement in the final write-up.
 
 Click **New Disaster** in the sidebar to clear all data.
 
