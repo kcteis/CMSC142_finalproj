@@ -21,12 +21,11 @@ from ml_scorer import score_families, train_model, get_validation_report, MODEL_
 from utils import (validate_item, validate_capacity, validate_family,
                    check_supply_warnings, export_text, export_csv, build_text_report)
 
-# ── Theme ─────────────────────────────────────────────────────────────────────
 BG      = "#F5F4F1"
 CARD    = "#FFFFFF"
 BORDER  = "#E2E0D8"
 NAV_BG  = "#1E1B4B"
-NAV_ACC = "#4F46E5"   # bright indigo for active nav item
+NAV_ACC = "#4F46E5"   
 PRIMARY = "#1A1A1A"
 MUTED   = "#6B6A65"
 ACCENT  = "#4F46E5"
@@ -34,7 +33,7 @@ SUCCESS = "#16A34A"
 WARNING = "#D97706"
 DANGER  = "#DC2626"
 BTNFG   = "#FFFFFF"
-TBL_HDR = "#F1F0EC"   # table column-header background
+TBL_HDR = "#F1F0EC"   
 
 FN    = ("Helvetica", 11)
 FN_SM = ("Helvetica", 10)
@@ -42,7 +41,6 @@ FN_B  = ("Helvetica", 11, "bold")
 FN_H1 = ("Helvetica", 16, "bold")
 FN_H2 = ("Helvetica", 12, "bold")
 
-# Nav items: (screen_key, label_text)
 _NAV_ITEMS = [
     ("inventory", "Inventory Setup"),
     ("families",  "Family Registry"),
@@ -81,7 +79,7 @@ _RESULT_COL_DEFS = [
 ]
 
 
-# ── Shared state ──────────────────────────────────────────────────────────────
+# ── Shared state (global memory object) ──────────────────────────────────────────────────────────────
 class State:
     def reset(self):
         self.items:        list[ReliefItem] = []
@@ -102,7 +100,7 @@ class State:
 S = State()
 
 
-# ── Tiny helpers ──────────────────────────────────────────────────────────────
+# ── Tiny helpers (UI) ──────────────────────────────────────────────────────────────
 def lbl(parent, text, font=FN, fg=PRIMARY, bg=BG, **kw):
     return tk.Label(parent, text=text, font=font, fg=fg, bg=bg, **kw)
 
@@ -139,8 +137,6 @@ def scrollable(parent):
     sb.pack(side="right", fill="y")
     return outer, inner
 
-# Width (px) of a ttk vertical scrollbar; used to right-pad table headers so
-# their columns line up with the rows inside the scrollable region below.
 _SB_W = 17
 
 def tbl_header(parent, col_defs, sb_pad=False):
@@ -301,6 +297,7 @@ class App(tk.Tk):
         for it in defaults:
             self._add_item_row(it)
 
+        # ── Optimize Bag button ──────────────────────────────────────────────────
         bot = tk.Frame(ic, bg=CARD)
         bot.pack(fill="x", padx=12, pady=8)
         self._inv_status = lbl(bot, "", fg=MUTED, bg=CARD, font=FN_SM)
@@ -337,6 +334,8 @@ class App(tk.Tk):
         self._item_vars.append(data)
 
     def _run_knapsack(self):
+        # Validates input -> builds ReliefItem objects -> calls optimize_bag()
+        # from knapsack.py (the 0/1 knapsack DP algorithm) -> saves the result to S.
         ok, msg = validate_capacity(self._cap.get())
         if not ok: messagebox.showerror("Error", msg); return
         try:
@@ -436,6 +435,9 @@ class App(tk.Tk):
             color=SUCCESS, width=20).pack(side="right", ipadx=4, ipady=2)
 
     def _add_family(self):
+        # Validates input, prevents duplicate IDs, creates a Family object,
+        # and calls f.compute_formula_score() which computes a priority score
+        # using a formula (e.g., size x weight + vulnerable x weight + damage x weight).
         ok, msg = validate_family(self._fid.get(), self._fsz.get(),
                                   self._fvl.get(), self._fdm.get())
         if not ok: messagebox.showerror("Error", msg); return
@@ -484,6 +486,9 @@ class App(tk.Tk):
             tk.Frame(self._fam_inner, bg=BORDER, height=1).pack(fill="x")
 
     def _run_assignment(self):
+        # Triggered when "Generate Assignment" is clicked.
+        # Checks prerequisites -> optionally runs ML scoring -> calls assign_bags()
+        # (the priority sorter from priority.py) -> jumps to the Results screen.
         if not S.bag_contents:
             messagebox.showerror("Error", "Run 'Optimize Bag' on the Inventory screen first."); return
         if not S.families:
@@ -600,27 +605,41 @@ class App(tk.Tk):
         btn(exp, "Export CSV", self._exp_csv, color=ACCENT, width=14).pack(side="right", padx=4, ipady=2)
 
     def _show_dp_table(self):
+        # Opens a popup window that visualizes the 0/1 Knapsack DP table.
+        # Useful for showing how the algorithm builds up the optimal solution
+        # cell-by-cell (rows = items considered, columns = capacity in 0.1 kg steps).
         if not S.items:
             messagebox.showinfo("No data", "No items loaded."); return
+
+        # Ask knapsack.py for the filled DP matrix plus its dimensions.
+        # PREC is the scale factor (e.g. 10) used to convert kg into integer steps.
         dp, items, W, PREC = get_dp_table(S.items, S.capacity_kg)
+
+        # Create a new top-level window (separate from the main app window).
         win = tk.Toplevel(self)
         win.title("DP Table \u2014 0/1 Knapsack")
         win.configure(bg=BG)
         win.geometry("860x420")
         lbl(win, "0/1 Knapsack DP Table  (rows = items added, columns = capacity in 0.1 kg steps)",
             font=FN_SM, fg=MUTED, bg=BG).pack(anchor="w", padx=14, pady=6)
-
+       
         frame = tk.Frame(win, bg=BG)
         frame.pack(fill="both", expand=True, padx=10, pady=4)
 
         xsb = ttk.Scrollbar(frame, orient="horizontal")
         ysb = ttk.Scrollbar(frame, orient="vertical")
+
         tv  = ttk.Treeview(frame, xscrollcommand=xsb.set, yscrollcommand=ysb.set)
         xsb.configure(command=tv.xview)
         ysb.configure(command=tv.yview)
 
+        # The full DP table can be huge, so sample at most ~20 columns evenly across
+        # the capacity range to keep the display readable.
         step   = max(1, W // 20)
         w_cols = list(range(0, W + 1, step))
+
+        # Configure the table's column headers: leftmost shows item name,
+        # the rest show capacity values (converted back to kg via / PREC).
         tv["columns"] = [str(w) for w in w_cols]
         tv.heading("#0", text="Item \\ Cap")
         tv.column("#0", width=110, anchor="w")
@@ -629,6 +648,8 @@ class App(tk.Tk):
             tv.heading(str(w), text=f"{cap:.1f}")
             tv.column(str(w), width=42, anchor="center")
 
+        # Fill each row with the DP values. Row 0 is the "Base" case (no items yet);
+        # row i corresponds to having considered the first i items.
         for i in range(len(items) + 1):
             row_label = "Base" if i == 0 else items[i-1].name[:12]
             values     = [str(dp[i][w]) for w in w_cols]
