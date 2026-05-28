@@ -15,7 +15,6 @@ PRECISION = 10  # work in 0.1 kg steps
 def _build_dp(items: List[ReliefItem], capacity_kg: float):
     """
     Fill the 0/1 knapsack DP table (shared by optimize_bag and get_dp_table).
-
     dp[i][w] = max benefit using the first i items within capacity w (0.1 kg units).
     """
     W = int(capacity_kg * PRECISION)

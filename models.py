@@ -23,7 +23,6 @@ class Family:
 
     # Filled after scoring
     formula_score: float = 0.0
-    ml_score: float = 0.0
     final_score: float = 0.0
 
     def compute_formula_score(self) -> float:

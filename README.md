@@ -38,14 +38,6 @@ exhausted.
 
 - Time: `O(F log F)` for the sort, `O(F)` for the pass.
 
-**Optional — Decision-Tree Vulnerability Scorer** (`ml_scorer.py`)
-A scikit-learn `DecisionTreeClassifier` trained on synthetic DSWD-aligned data
-predicts a risk label (high / medium / low) for each family. The label is
-converted to a numeric `ml_score` and blended with the formula score as
-`final_score = 0.6 × formula_score + 0.4 × ml_score`. **This module is an
-enhancement layered on top of the proposed algorithm — it is not in the
-original proposal.** It can be toggled off in the Family Registry screen.
-
 ---
 
 ## Project structure
@@ -56,10 +48,8 @@ CMSC142_finalproj/
 ├── models.py          # ReliefItem, Family, AssignmentResult, OperationSummary
 ├── knapsack.py        # Module 1 — 0/1 Knapsack DP
 ├── priority.py        # Module 2 — Greedy assignment
-├── ml_scorer.py       # Optional Decision Tree classifier
-├── ml_model.pkl       # Trained model (auto-generated on first run)
 ├── utils.py           # Input validation, supply warnings, TXT/CSV export
-├── requirements.txt   # Third-party deps (numpy, scikit-learn)
+├── requirements.txt   # Notes (stdlib only; no pip packages required)
 └── README.md
 ```
 
@@ -70,8 +60,6 @@ CMSC142_finalproj/
 - **Python 3.9 or newer** (PEP 585 generic type hints are used)
 - **tkinter** — ships with most Python distributions. On Debian/Ubuntu:
   `sudo apt install python3-tk`
-- The pip packages in `requirements.txt` (only needed if you keep the ML
-  module enabled)
 
 ---
 
@@ -86,8 +74,9 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-pip install -r requirements.txt
 ```
+
+(Optional: `pip install -r requirements.txt` — no third-party packages are required.)
 
 ---
 
@@ -97,22 +86,18 @@ pip install -r requirements.txt
 python app.py
 ```
 
-On the first launch, the ML model is trained automatically and saved to
-`ml_model.pkl`. Subsequent launches load the cached model.
-
 You can also run the algorithm modules directly for a quick sanity check:
 
 ```bash
 python knapsack.py    # prints an optimal bag for sample inventory
 python priority.py    # prints a ranked assignment for sample families
-python ml_scorer.py   # trains the model and prints validation metrics
 ```
 
 ---
 
 ## Using the app
 
-The GUI has four screens, accessed from the left sidebar.
+The GUI has three screens, accessed from the left sidebar.
 
 1. **Inventory Setup** — Enter the disaster name and barangay (sidebar
    fields), the maximum bag weight in kg, and the number of bags available.
@@ -120,15 +105,11 @@ The GUI has four screens, accessed from the left sidebar.
    quantity), then click **Optimize Bag** to run the DP.
 2. **Family Registry** — Add each affected family with size, vulnerable
    member count, and damage level (1 minor, 2 partial, 3 total loss).
-   Toggle ML scoring on or off. Click **Generate Assignment** to run the
-   greedy step.
+   Click **Generate Assignment** to run the greedy step.
 3. **Results** — Shows the optimized bag manifest on the left, a ranked
    assignment table on the right, and summary stats at the top. Includes a
    **View DP Table** button that opens the full DP table used by Module 1,
    and **Export TXT / CSV** buttons for field use.
-4. **ML Validation** — Accuracy on a held-out test set, confusion matrix,
-   feature importances, and a classification report. Useful for justifying
-   the optional ML enhancement in the final write-up.
 
 Click **New Disaster** in the sidebar to clear all data.
 

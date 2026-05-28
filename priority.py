@@ -1,7 +1,7 @@
 """
 Module 2 — Greedy Priority Assignment
 ---------------------------------------
-Ranks families by final_score (formula or blended with ML),
+Ranks families by priority score (formula),
 then assigns bags in descending order until supply runs out.
 
 Tie-breaking: higher size → earlier registration_order
@@ -11,14 +11,10 @@ from typing import List
 from models import Family, ReliefItem, AssignmentResult, OperationSummary
 
 
-def compute_scores(families: List[Family], use_ml: bool = False) -> List[Family]:
+def compute_scores(families: List[Family]) -> List[Family]:
     for f in families:
         f.compute_formula_score()
-        if use_ml and f.ml_score > 0:
-            # 60% formula + 40% ML for the final ranking score
-            f.final_score = round(0.6 * f.formula_score + 0.4 * f.ml_score, 2)
-        else:
-            f.final_score = f.formula_score
+        f.final_score = f.formula_score
     return families
 
 
@@ -35,9 +31,8 @@ def assign_bags(
     bag_weight: float,
     bag_benefit: int,
     supply: int,
-    use_ml: bool = False,
 ) -> OperationSummary:
-    families = compute_scores(families, use_ml=use_ml)
+    families = compute_scores(families)
     ranked   = rank_families(families)
 
     assignments = []

@@ -147,12 +147,12 @@ def export_text(summary: OperationSummary, path: str,
 def export_csv(summary: OperationSummary, path: str) -> str:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["Rank","Family ID","Final Score","Formula Score","ML Score",
+        w.writerow(["Rank","Family ID","Final Score","Formula Score",
                     "Size","Vulnerable","Damage","Status","Bag Weight","Bag Benefit"])
         for rank, a in enumerate(summary.assignments, 1):
             fam = a.family
             w.writerow([rank, fam.family_id, fam.final_score, fam.formula_score,
-                        fam.ml_score, fam.size, fam.vulnerable_count, fam.damage_level,
+                        fam.size, fam.vulnerable_count, fam.damage_level,
                         "SERVED" if a.served else "UNSERVED",
                         a.bag_weight, a.bag_benefit])
     return path
