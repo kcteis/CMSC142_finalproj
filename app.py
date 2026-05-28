@@ -5,7 +5,6 @@ Screens:
   1. Inventory Setup   — items + bag capacity + bag count
   2. Family Registry   — register families, auto-score
   3. Results           — optimized bag + ranked assignment
-  4. ML Validation     — model accuracy, confusion matrix, feature importance
 """
 
 import tkinter as tk
@@ -45,7 +44,6 @@ _NAV_ITEMS = [
     ("inventory", "Inventory Setup"),
     ("families",  "Family Registry"),
     ("results",   "Results"),
-    ("mlval",     "ML Validation"),
 ]
 
 # Column definitions for the items table (label, grid weight)
@@ -120,8 +118,6 @@ def card_frame(parent, **kw):
                     highlightbackground=BORDER, highlightthickness=1, **kw)
 
 def scrollable(parent):
-    """Return (outer_frame, inner_frame) with a vertical scrollbar.
-    The inner frame is kept at the canvas width so grid-based rows expand correctly."""
     outer  = tk.Frame(parent, bg=CARD)
     canvas = tk.Canvas(outer, bg=CARD, highlightthickness=0)
     sb     = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
@@ -140,13 +136,6 @@ def scrollable(parent):
 _SB_W = 17
 
 def tbl_header(parent, col_defs, sb_pad=False):
-    """Render an aligned table header whose column weights match the data rows.
-
-    When ``sb_pad`` is True, reserves space on the right for a vertical
-    scrollbar in the scrollable rows area below, keeping every column under
-    its header. Columns are placed in a ``uniform`` group so their widths
-    are strictly proportional to their weights, independent of content.
-    """
     f = tk.Frame(parent, bg=TBL_HDR)
     f.pack(fill="x", padx=(10, 10 + _SB_W) if sb_pad else 10)
     for col, (txt, wt) in enumerate(col_defs):
@@ -173,7 +162,7 @@ class App(tk.Tk):
         self.geometry("1080x700")
         self.minsize(900, 600)
         self.configure(bg=BG)
-        self._screens = {}
+        # self._screens = {}
         self._build_nav()
         self.show("inventory")
 
@@ -232,8 +221,7 @@ class App(tk.Tk):
             f.destroy()
         {"inventory": self._inventory,
          "families":  self._families,
-         "results":   self._results,
-         "mlval":     self._mlval}[name](self.content)
+         "results":   self._results}[name](self.content)
 
     def _reset(self):
         if messagebox.askyesno("New Disaster", "Clear all data and start fresh?"):
@@ -435,9 +423,6 @@ class App(tk.Tk):
             color=SUCCESS, width=20).pack(side="right", ipadx=4, ipady=2)
 
     def _add_family(self):
-        # Validates input, prevents duplicate IDs, creates a Family object,
-        # and calls f.compute_formula_score() which computes a priority score
-        # using a formula (e.g., size x weight + vulnerable x weight + damage x weight).
         ok, msg = validate_family(self._fid.get(), self._fsz.get(),
                                   self._fvl.get(), self._fdm.get())
         if not ok: messagebox.showerror("Error", msg); return
@@ -486,9 +471,6 @@ class App(tk.Tk):
             tk.Frame(self._fam_inner, bg=BORDER, height=1).pack(fill="x")
 
     def _run_assignment(self):
-        # Triggered when "Generate Assignment" is clicked.
-        # Checks prerequisites -> optionally runs ML scoring -> calls assign_bags()
-        # (the priority sorter from priority.py) -> jumps to the Results screen.
         if not S.bag_contents:
             messagebox.showerror("Error", "Run 'Optimize Bag' on the Inventory screen first."); return
         if not S.families:
@@ -605,17 +587,11 @@ class App(tk.Tk):
         btn(exp, "Export CSV", self._exp_csv, color=ACCENT, width=14).pack(side="right", padx=4, ipady=2)
 
     def _show_dp_table(self):
-        # Opens a popup window that visualizes the 0/1 Knapsack DP table.
-        # Useful for showing how the algorithm builds up the optimal solution
-        # cell-by-cell (rows = items considered, columns = capacity in 0.1 kg steps).
         if not S.items:
             messagebox.showinfo("No data", "No items loaded."); return
 
-        # Ask knapsack.py for the filled DP matrix plus its dimensions.
-        # PREC is the scale factor (e.g. 10) used to convert kg into integer steps.
         dp, items, W, PREC = get_dp_table(S.items, S.capacity_kg)
 
-        # Create a new top-level window (separate from the main app window).
         win = tk.Toplevel(self)
         win.title("DP Table \u2014 0/1 Knapsack")
         win.configure(bg=BG)
@@ -633,13 +609,9 @@ class App(tk.Tk):
         xsb.configure(command=tv.xview)
         ysb.configure(command=tv.yview)
 
-        # The full DP table can be huge, so sample at most ~20 columns evenly across
-        # the capacity range to keep the display readable.
         step   = max(1, W // 20)
         w_cols = list(range(0, W + 1, step))
 
-        # Configure the table's column headers: leftmost shows item name,
-        # the rest show capacity values (converted back to kg via / PREC).
         tv["columns"] = [str(w) for w in w_cols]
         tv.heading("#0", text="Item \\ Cap")
         tv.column("#0", width=110, anchor="w")
@@ -648,8 +620,6 @@ class App(tk.Tk):
             tv.heading(str(w), text=f"{cap:.1f}")
             tv.column(str(w), width=42, anchor="center")
 
-        # Fill each row with the DP values. Row 0 is the "Base" case (no items yet);
-        # row i corresponds to having considered the first i items.
         for i in range(len(items) + 1):
             row_label = "Base" if i == 0 else items[i-1].name[:12]
             values     = [str(dp[i][w]) for w in w_cols]
@@ -675,105 +645,6 @@ class App(tk.Tk):
             export_csv(S.summary, path)
             messagebox.showinfo("Exported", f"Saved to:\n{path}")
 
-    # ── Screen 4 — ML Validation ──────────────────────────────────────────────
-    def _mlval(self, parent):
-        lbl(parent, "ML Model Validation", font=FN_H1).pack(anchor="w", padx=24, pady=(20, 2))
-        lbl(parent, "Decision Tree Classifier \u2014 trained on synthetic DSWD-aligned family data.",
-            font=FN_SM, fg=MUTED).pack(anchor="w", padx=24)
-
-        btn_row = tk.Frame(parent, bg=BG)
-        btn_row.pack(anchor="w", padx=24, pady=(10, 4))
-        btn(btn_row, "Retrain Model", self._retrain, width=13).pack(side="left")
-        self._ml_msg = lbl(btn_row, "", fg=MUTED, font=FN_SM)
-        self._ml_msg.pack(side="left", padx=10)
-
-        self._ml_content = tk.Frame(parent, bg=BG)
-        self._ml_content.pack(fill="both", expand=True, padx=24, pady=4)
-        self._render_mlval()
-
-    def _retrain(self):
-        self._ml_msg.configure(text="Training\u2026", fg=WARNING)
-        self.update()
-        train_model(verbose=False)
-        self._ml_msg.configure(text="Model retrained!", fg=SUCCESS)
-        self._render_mlval()
-
-    def _render_mlval(self):
-        for w in self._ml_content.winfo_children():
-            w.destroy()
-
-        try:
-            vr = get_validation_report()
-        except Exception as e:
-            lbl(self._ml_content, f"Could not load model: {e}", fg=DANGER).pack(pady=20)
-            return
-
-        cols = tk.Frame(self._ml_content, bg=BG)
-        cols.pack(fill="both", expand=True)
-
-        # Left — accuracy + feature importance
-        left = card_frame(cols)
-        left.pack(side="left", fill="y", padx=(0, 6), pady=2)
-
-        lbl(left, "Accuracy", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(12, 4))
-        lbl(left, f"{vr['accuracy']:.2%}", font=("Helvetica", 28, "bold"),
-            fg=SUCCESS if vr['accuracy'] >= 0.85 else WARNING, bg=CARD).pack(anchor="w", padx=16)
-        lbl(left, "on held-out test set (20%)", font=FN_SM, fg=MUTED, bg=CARD).pack(anchor="w", padx=16)
-
-        tk.Frame(left, bg=BORDER, height=1).pack(fill="x", padx=14, pady=10)
-        lbl(left, "Feature importances", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(0, 8))
-
-        max_imp = max(vr["feature_importances"].values())
-        for feat, imp in sorted(vr["feature_importances"].items(), key=lambda x: -x[1]):
-            row = tk.Frame(left, bg=CARD)
-            row.pack(fill="x", padx=16, pady=3)
-            lbl(row, f"{feat}:", bg=CARD, font=FN_SM, width=18, anchor="w").pack(side="left")
-            bar_bg = tk.Frame(row, bg="#E8E6E0", width=140, height=14)
-            bar_bg.pack(side="left")
-            bar_bg.pack_propagate(False)
-            bar_w = int(140 * imp / max_imp)
-            tk.Frame(bar_bg, bg=ACCENT, width=bar_w, height=14).place(x=0, y=0)
-            lbl(row, f"{imp:.3f}", bg=CARD, font=FN_SM, fg=MUTED).pack(side="left", padx=6)
-
-        lbl(left, "", bg=CARD).pack(pady=4)
-
-        # Right — confusion matrix + classification report
-        right = card_frame(cols)
-        right.pack(side="left", fill="both", expand=True, pady=2)
-
-        lbl(right, "Confusion Matrix", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(12, 4))
-
-        labels  = vr["labels"]
-        cm      = vr["confusion_matrix"]
-        cm_f    = tk.Frame(right, bg=CARD)
-        cm_f.pack(anchor="w", padx=16, pady=4)
-
-        lbl(cm_f, "Predicted \u2192", font=FN_SM, fg=MUTED, bg=CARD).grid(
-            row=0, column=0, padx=4, pady=2)
-        for j, lab in enumerate(labels):
-            lbl(cm_f, lab, font=FN_B, bg=CARD).grid(row=0, column=j+1, padx=8)
-        for i, lab in enumerate(labels):
-            lbl(cm_f, lab, font=FN_B, fg=MUTED, bg=CARD).grid(row=i+1, column=0, padx=6, sticky="e")
-            for j in range(len(labels)):
-                val = cm[i][j]
-                bg  = "#EEF2FF" if i == j else CARD
-                fg  = ACCENT   if i == j else PRIMARY
-                lbl(cm_f, str(val), font=FN_B if i==j else FN_SM,
-                    fg=fg, bg=bg).grid(row=i+1, column=j+1, padx=8, pady=2,
-                                       ipadx=6, ipady=3)
-
-        tk.Frame(right, bg=BORDER, height=1).pack(fill="x", padx=14, pady=8)
-        lbl(right, "Classification Report", font=FN_H2, bg=CARD).pack(anchor="w", padx=16, pady=(0, 4))
-        st = scrolledtext.ScrolledText(right, height=8, font=("Courier", 10),
-                                       bg="#F8F7F4", fg=PRIMARY, relief="flat", bd=0)
-        st.pack(fill="both", expand=True, padx=14, pady=(0, 12))
-        st.insert("end", vr["classification_report"])
-        st.configure(state="disabled")
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────
 if __name__ == "__main__":
-    if not os.path.exists(MODEL_PATH):
-        print("First run — training ML model…")
-        train_model(verbose=False)
     App().mainloop()
