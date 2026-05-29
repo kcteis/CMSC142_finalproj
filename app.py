@@ -49,7 +49,7 @@ _NAV_ITEMS = [
 _ITEM_COL_DEFS = [
     ("Item name",      3),
     ("Weight (kg)",    2),
-    ("Benefit (1\u201310)", 2),   # 1–10
+    ("Benefit",        2),   # auto-fills for standard names
     ("Qty",            1),
     ("Action",         1),
 ]
@@ -73,6 +73,28 @@ _RESULT_COL_DEFS = [
     ("Dmg",    1),
     ("Status", 2),
 ]
+
+# Standard relief catalog — case-insensitive match on item name (weight kg, benefit, qty)
+STANDARD_RELIEF = {
+    "rice":         (3.0, 9, 50),
+    "canned goods": (1.5, 7, 80),
+    "water":        (2.0, 8, 60),
+    "medicine":     (0.5, 10, 40),
+    "blanket":      (1.5, 5, 30),
+    "hygiene kit":  (0.5, 6, 50),
+}
+
+BENEFIT_GUIDE_TEXT = (
+    "Benefit scores (1\u201310) are pre-set for standard items when you leave the name field. "
+    "Rubric: 9\u201310 critical (medicine, rice) \u00b7 7\u20138 high (water, canned goods) \u00b7 "
+    "5\u20136 medium (hygiene) \u00b7 1\u20135 lower (blanket). Custom items: enter benefit manually."
+)
+
+
+def lookup_standard_item(name: str):
+    """Return (weight_kg, benefit, quantity) if name matches catalog, else None."""
+    key = name.strip().lower()
+    return STANDARD_RELIEF.get(key) if key else None
 
 
 # ── Shared state (global memory object) ──────────────────────────────────────────────────────────────
@@ -264,6 +286,13 @@ class App(tk.Tk):
 
         btn(hdr, "+ Add row", self._add_item_row, width=9).pack(side="right")
 
+        guide_row = tk.Frame(ic, bg=CARD)
+        guide_row.pack(fill="x", padx=16, pady=(0, 6))
+        lbl(guide_row, BENEFIT_GUIDE_TEXT, font=FN_SM, fg=MUTED, bg=CARD,
+            wraplength=720, justify="left").pack(side="left", fill="x", expand=True)
+        outline_btn(guide_row, "Full guide", self._show_benefit_guide,
+                    color=ACCENT, width=10).pack(side="right", padx=(8, 0))
+
         # Aligned column headers
         tbl_header(ic, _ITEM_COL_DEFS, sb_pad=True)
 
@@ -290,6 +319,43 @@ class App(tk.Tk):
         btn(bot, "\U0001f381  Optimize Bag", self._run_knapsack,
             color=SUCCESS, width=16).pack(side="right")
 
+    def _show_benefit_guide(self):
+        display_order = [
+            ("Medicine", "medicine"),
+            ("Rice", "rice"),
+            ("Water", "water"),
+            ("Canned goods", "canned goods"),
+            ("Hygiene kit", "hygiene kit"),
+            ("Blanket", "blanket"),
+        ]
+        lines = [
+            "Standard relief items (benefit auto-fills on name):",
+            "",
+        ]
+        for title, key in display_order:
+            wt, ben, qty = STANDARD_RELIEF[key]
+            lines.append(f"  {title:14}  {wt} kg   benefit {ben}   qty {qty}")
+        lines += [
+            "",
+            "Rubric (custom items):",
+            "  9\u201310  Life-critical (medicine, staple food)",
+            "  7\u20138    High priority (water, canned goods)",
+            "  5\u20136    Medium (hygiene kits)",
+            "  1\u20134    Lower priority (comfort items)",
+        ]
+        messagebox.showinfo("Benefit guide", "\n".join(lines))
+
+    def _apply_standard_item_fields(self, nv, wv, bv, qv, fill_empty_only=False):
+        std = lookup_standard_item(nv.get())
+        if not std:
+            return
+        wt, ben, qty = std
+        bv.set(str(ben))
+        if not fill_empty_only or not wv.get().strip():
+            wv.set(str(wt))
+        if not fill_empty_only or not qv.get().strip():
+            qv.set(str(qty))
+
     def _add_item_row(self, item=None):
         row = tk.Frame(self._item_inner, bg=CARD)
         row.pack(fill="x", pady=2)
@@ -302,10 +368,18 @@ class App(tk.Tk):
         bv = tk.StringVar(value=str(item.benefit)   if item else "")
         qv = tk.StringVar(value=str(item.quantity)  if item else "")
 
-        for col, var in enumerate([nv, wv, bv, qv]):
+        name_entry = tk.Entry(row, textvariable=nv, font=FN, relief="solid", bd=1,
+                              highlightthickness=0)
+        name_entry.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        for col, var in enumerate([wv, bv, qv], start=1):
             tk.Entry(row, textvariable=var, font=FN, relief="solid", bd=1,
                      highlightthickness=0).grid(row=0, column=col,
                                                 sticky="ew", padx=5, pady=5)
+
+        def on_name_leave(_event=None):
+            self._apply_standard_item_fields(nv, wv, bv, qv, fill_empty_only=True)
+
+        name_entry.bind("<FocusOut>", on_name_leave)
 
         data = (nv, wv, bv, qv)
 
