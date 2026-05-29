@@ -125,7 +125,6 @@ def scrollable(parent):
                lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
     canvas.configure(yscrollcommand=sb.set)
-    # Keep inner frame as wide as the canvas so fill="x" rows have a defined width
     canvas.bind("<Configure>",
                 lambda e, wid=win_id: canvas.itemconfig(wid, width=e.width))
     canvas.pack(side="left", fill="both", expand=True)
@@ -135,13 +134,6 @@ def scrollable(parent):
 _SB_W = 17
 
 def tbl_header(parent, col_defs, sb_pad=False):
-    """Render an aligned table header whose column weights match the data rows.
-
-    When ``sb_pad`` is True, reserves space on the right for a vertical
-    scrollbar in the scrollable rows area below, keeping every column under
-    its header. Columns are placed in a ``uniform`` group so their widths
-    are strictly proportional to their weights, independent of content.
-    """
     f = tk.Frame(parent, bg=TBL_HDR)
     f.pack(fill="x", padx=(10, 10 + _SB_W) if sb_pad else 10)
     for col, (txt, wt) in enumerate(col_defs):
@@ -152,7 +144,6 @@ def tbl_header(parent, col_defs, sb_pad=False):
     return f
 
 def col_header(parent, cols, bg="#EEECEA"):
-    """Simple pack-based header (used on Results screen)."""
     f = tk.Frame(parent, bg=bg)
     f.pack(fill="x", padx=10)
     for txt in cols:
@@ -328,8 +319,6 @@ class App(tk.Tk):
         self._item_vars.append(data)
 
     def _run_knapsack(self):
-        # Validates input -> builds ReliefItem objects -> calls optimize_bag()
-        # from knapsack.py (the 0/1 knapsack DP algorithm) -> saves the result to S.
         ok, msg = validate_capacity(self._cap.get())
         if not ok: messagebox.showerror("Error", msg); return
         try:
@@ -424,9 +413,6 @@ class App(tk.Tk):
             color=SUCCESS, width=20).pack(side="right", ipadx=4, ipady=2)
 
     def _add_family(self):
-        # Validates input, prevents duplicate IDs, creates a Family object,
-        # and calls f.compute_formula_score() which computes a priority score
-        # using a formula (e.g., size x weight + vulnerable x weight + damage x weight).
         ok, msg = validate_family(self._fid.get(), self._fsz.get(),
                                   self._fvl.get(), self._fdm.get())
         if not ok: messagebox.showerror("Error", msg); return
@@ -475,8 +461,6 @@ class App(tk.Tk):
             tk.Frame(self._fam_inner, bg=BORDER, height=1).pack(fill="x")
 
     def _run_assignment(self):
-        # Triggered when "Generate Assignment" is clicked.
-        # Checks prerequisites -> calls assign_bags() -> jumps to the Results screen.
         if not S.bag_contents:
             messagebox.showerror("Error", "Run 'Optimize Bag' on the Inventory screen first."); return
         if not S.families:
@@ -590,17 +574,11 @@ class App(tk.Tk):
         btn(exp, "Export CSV", self._exp_csv, color=ACCENT, width=14).pack(side="right", padx=4, ipady=2)
 
     def _show_dp_table(self):
-        # Opens a popup window that visualizes the 0/1 Knapsack DP table.
-        # Useful for showing how the algorithm builds up the optimal solution
-        # cell-by-cell (rows = items considered, columns = capacity in 0.1 kg steps).
         if not S.items:
             messagebox.showinfo("No data", "No items loaded."); return
 
-        # Ask knapsack.py for the filled DP matrix plus its dimensions.
-        # PREC is the scale factor (e.g. 10) used to convert kg into integer steps.
         dp, items, W, PREC = get_dp_table(S.items, S.capacity_kg)
 
-        # Create a new top-level window (separate from the main app window).
         win = tk.Toplevel(self)
         win.title("DP Table \u2014 0/1 Knapsack")
         win.configure(bg=BG)
@@ -618,13 +596,9 @@ class App(tk.Tk):
         xsb.configure(command=tv.xview)
         ysb.configure(command=tv.yview)
 
-        # The full DP table can be huge, so sample at most ~20 columns evenly across
-        # the capacity range to keep the display readable.
         step   = max(1, W // 20)
         w_cols = list(range(0, W + 1, step))
 
-        # Configure the table's column headers: leftmost shows item name,
-        # the rest show capacity values (converted back to kg via / PREC).
         tv["columns"] = [str(w) for w in w_cols]
         tv.heading("#0", text="Item \\ Cap")
         tv.column("#0", width=110, anchor="w")
@@ -633,8 +607,6 @@ class App(tk.Tk):
             tv.heading(str(w), text=f"{cap:.1f}")
             tv.column(str(w), width=42, anchor="center")
 
-        # Fill each row with the DP values. Row 0 is the "Base" case (no items yet);
-        # row i corresponds to having considered the first i items.
         for i in range(len(items) + 1):
             row_label = "Base" if i == 0 else items[i-1].name[:12]
             values     = [str(dp[i][w]) for w in w_cols]
